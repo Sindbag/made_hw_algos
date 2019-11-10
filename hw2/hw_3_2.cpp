@@ -1,16 +1,7 @@
 #include <iostream>
 #include <vector>
-#include <cmath>
 
 namespace {
-    template<typename T>
-    inline void printVec(const std::vector<T>& vec) {
-        for (const auto& el : vec) {
-            std::cout << el << ' ';
-        }
-        std::cout << std::endl;
-    }
-
     template<typename T>
     void merge(std::vector<T>& arr, const int begin, const int mid, const int end) {
         const std::vector<T> left(arr.begin() + begin, arr.begin() + mid);
@@ -45,21 +36,26 @@ namespace {
 }
 
 int main() {
-    int n, k;
+    int n, k, red = 0;
     std::cin >> n >> k;
-    std::vector<int> arr(n);
-    for (auto& el : arr) {
-        std::cin >> el;
+    std::vector<int> arr(2 * k);
+    for (size_t i = 0; i < k && red < n; ++i) {
+        std::cin >> arr[k + i];
+        red++;
+    }
+    mergeSort(arr, k, red % 2 * k ? red % 2 * k : 2 * k);
+
+    for (; red < n;) {
+        for (size_t i = 0; i < k && red < n; ++i) {
+            std::cin >> arr[i];
+            red++;
+        }
+        mergeSort(arr, 0, red % k ? red % k : k);
+        merge(arr, 0, k, red % 2 * k ? red % 2 * k : 2 * k);
+        for (size_t j = 0; j < std::min(n, k); ++j) std::cout << arr[j] << ' ';
     }
 
-    for (int i = 0; i < n; i += k) {
-        mergeSort(arr, i, std::min(n, i + k));
-    }
+    for (size_t j = 0; j < red % k; ++j) std::cout << arr[k + j] << ' ';
 
-    for (int i = 0; i + k < n; i += k) {
-        merge(arr, i, i + k, std::min(n, i + 2 * k));
-    }
-
-    printVec(arr);
     return 0;
 }
