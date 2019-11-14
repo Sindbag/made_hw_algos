@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <cmath>
 
 namespace {
     template<typename T>
@@ -43,19 +44,21 @@ int main() {
         std::cin >> arr[k + i];
         red++;
     }
-    mergeSort(arr, k, red % 2 * k ? red % 2 * k : 2 * k);
+    mergeSort(arr, k, red % k ? k + red % k : 2 * k);
 
     for (; red < n;) {
-        for (size_t i = 0; i < k && red < n; ++i) {
-            std::cin >> arr[i];
+        const auto to_read = std::min(k, n - red);
+        const auto leftPad = k - to_read;
+        for (size_t i = 0; i < to_read; ++i) {
+            std::cin >> arr[leftPad + i];
             red++;
         }
-        mergeSort(arr, 0, red % k ? red % k : k);
-        merge(arr, 0, k, red % 2 * k ? red % 2 * k : 2 * k);
-        for (size_t j = 0; j < std::min(n, k); ++j) std::cout << arr[j] << ' ';
+        mergeSort(arr, leftPad, k);
+        merge(arr, leftPad, k, 2 * k);
+        for (size_t j = 0; j < to_read; ++j) std::cout << arr[leftPad + j] << ' ';
     }
 
-    for (size_t j = 0; j < red % k; ++j) std::cout << arr[k + j] << ' ';
+    for (size_t j = 0; j < k; ++j) std::cout << arr[k + j] << ' ';
 
     return 0;
 }
