@@ -51,6 +51,17 @@ namespace {
             }
         }
     }
+
+    template<typename T>
+    void cutDown(TNode<T>* root) {
+        if (root->left != nullptr) {
+            cutDown(root->left);
+        }
+        if (root->right != nullptr) {
+            cutDown(root->right);
+        }
+        delete root;
+    }
 }
 
 int main() {
@@ -65,5 +76,6 @@ int main() {
         i++;
     }
     traversal(root);
+    cutDown(root);
     return 0;
 }
