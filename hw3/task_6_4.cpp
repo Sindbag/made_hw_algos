@@ -4,7 +4,6 @@
 
 namespace {
     using std::queue;
-    using std::deque;
 
     template<typename T>
     class TTree {
@@ -25,10 +24,12 @@ namespace {
         ~TTree();
 
     private:
+        template<typename Callback>
+        void traversalCb(Callback cb);
         void cut();
 
     public:
-        void traversal();
+        void print();
         void addNode(const T& value);
     };
 
@@ -38,31 +39,30 @@ namespace {
     }
 
     template<typename T>
-    void TTree<T>::cut() {
-        queue toRemove(std::deque{root});
-        while (!toRemove.empty()) {
-            const auto& curr = toRemove.front();
+    template<typename Callback>
+    void TTree<T>::traversalCb(Callback cb) {
+        queue<TNode*> toProcess;
+        toProcess.push(root);
+        while (!toProcess.empty()) {
+            const auto& curr = toProcess.front();
             if (curr != nullptr) {
-                toRemove.push(curr->left);
-                toRemove.push(curr->right);
-                delete curr;
+                toProcess.push(curr->left);
+                toProcess.push(curr->right);
+                cb(curr);
             }
-            toRemove.pop();
+            toProcess.pop();
         }
+
     }
 
     template<typename T>
-    void TTree<T>::traversal() {
-        queue que(deque{root});
-        while (!que.empty()) {
-            const auto& curr = que.front();
-            if (curr) {
-                printf("%d ", curr->value);
-                que.push(curr->left);
-                que.push(curr->right);
-            }
-            que.pop();
-        }
+    void TTree<T>::cut() {
+        traversalCb(free);
+    }
+
+    template<typename T>
+    void TTree<T>::print() {
+        traversalCb([](TTree::TNode* el) { printf("%d ", el->value); });
     }
 
     template<typename T>
@@ -97,13 +97,13 @@ namespace {
 
 int main() {
     TTree<int32_t> tree;
-    int32_t tmp;
+    int32_t n, tmp;
 
-    std::cin >> tmp;
-    while (std::cin >> tmp) {
+    std::cin >> n;
+    while (n-- && std::cin >> tmp) {
         tree.addNode(tmp);
     }
 
-    tree.traversal();
+    tree.print();
     return 0;
 }
