@@ -16,6 +16,10 @@ namespace {
             explicit TNode(const T& value_) : value(value_) {}
             TNode(TNode&) = delete;
             TNode(TNode&&) = delete;
+
+            void print() const {
+                printf("%d ", value);
+            }
         };
         TNode* root = nullptr;
 
@@ -62,7 +66,7 @@ namespace {
 
     template<typename T>
     void TTree<T>::print() {
-        traversalCb([](TTree::TNode* el) { printf("%d ", el->value); });
+        traversalCb([&](TTree::TNode* el) { el->print(); });
     }
 
     template<typename T>
