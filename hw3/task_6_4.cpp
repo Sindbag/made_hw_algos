@@ -39,8 +39,6 @@ namespace {
 
     template<typename T>
     void TTree<T>::cut() {
-        if (root == nullptr) return;
-
         queue toRemove(std::deque{root});
         while (!toRemove.empty()) {
             const auto& curr = toRemove.front();
