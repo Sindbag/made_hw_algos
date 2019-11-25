@@ -3,38 +3,82 @@
 #include <queue>
 
 namespace {
-    template<typename T>
-    class TNode {
-    public:
-        T Value;
-        TNode<T>* left = nullptr;
-        TNode<T>* right = nullptr;
+    using std::queue;
+    using std::deque;
 
-        TNode() = default;
-        explicit TNode(T val)
-            : Value(val)
-        {}
+    template<typename T>
+    class TTree {
+    private:
+        struct TNode {
+            T value;
+            TNode* left = nullptr;
+            TNode* right = nullptr;
+
+            explicit TNode(const T& value_) : value(value_) {}
+            TNode(TNode&) = delete;
+            TNode(TNode&&) = delete;
+        };
+        TNode* root = nullptr;
+
+    public:
+        TTree() = default;
+        ~TTree();
+
+    private:
+        void cut();
+
+    public:
+        void traversal();
+        void addNode(const T& value);
     };
 
     template<typename T>
-    void traversal(const TNode<T>* root) {
-        std::queue<const TNode<T>*> que;
-        que.push(root);
-        while (!que.empty()) {
-            auto curr = que.front();
-            que.pop();
-            std::cout << curr->Value << ' ';
-            if (curr->left) { que.push(curr->left); }
-            if (curr->right) { que.push(curr->right); }
+    TTree<T>::~TTree() {
+        cut();
+    }
+
+    template<typename T>
+    void TTree<T>::cut() {
+        if (root == nullptr) return;
+
+        queue toRemove(std::deque{root});
+        while (!toRemove.empty()) {
+            const auto& curr = toRemove.front();
+            if (curr != nullptr) {
+                toRemove.push(curr->left);
+                toRemove.push(curr->right);
+                delete curr;
+            }
+            toRemove.pop();
         }
     }
 
     template<typename T>
-    void addNode(TNode<T>* root, T value) {
+    void TTree<T>::traversal() {
+        queue que(deque{root});
+        while (!que.empty()) {
+            const auto& curr = que.front();
+            if (curr) {
+                printf("%d ", curr->value);
+                que.push(curr->left);
+                que.push(curr->right);
+            }
+            que.pop();
+        }
+    }
+
+    template<typename T>
+    void TTree<T>::addNode(const T& value) {
+        auto* newNode = new TTree::TNode(value);
+
+        if (root == nullptr) {
+            root = newNode;
+            return;
+        }
+
         auto curr = root;
-        auto* newNode = new TNode(value);
         while (true) {
-            if (curr->Value >= value) {
+            if (curr->value >= value) {
                 if (curr->left) {
                     curr = curr->left;
                 } else {
@@ -51,31 +95,17 @@ namespace {
             }
         }
     }
-
-    template<typename T>
-    void cutDown(TNode<T>* root) {
-        if (root->left != nullptr) {
-            cutDown(root->left);
-        }
-        if (root->right != nullptr) {
-            cutDown(root->right);
-        }
-        delete root;
-    }
 }
 
 int main() {
-    int n, tmp;
-    std::cin >> n;
+    TTree<int32_t> tree;
+    int32_t tmp;
+
     std::cin >> tmp;
-    int i = 1;
-    auto* root = new TNode(tmp);
-    while (i < n) {
-        std::cin >> tmp;
-        addNode(root, tmp);
-        i++;
+    while (std::cin >> tmp) {
+        tree.addNode(tmp);
     }
-    traversal(root);
-    cutDown(root);
+
+    tree.traversal();
     return 0;
 }
