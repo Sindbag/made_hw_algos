@@ -108,29 +108,35 @@ void writeTreeHeader(const vector<byte>& items, vector<uint32_t>& freqs, IOutput
     }
 }
 
-void readTreeHeader(vector<byte>& items, vector<uint32_t>& freqs, IInputStream& input) {
-    uint32_t size, freq;
+void readBytes(IInputStream& input, size_t size, void* dest) {
     byte tmp;
-    for (size_t j = 0; j < 4; ++j) {
+    for (size_t j = 0; j < size; ++j) {
         if (input.Read(tmp)) {
-            *(static_cast<byte*>(static_cast<void*>(&size)) + j) = tmp;
+            *(static_cast<byte*>(dest) + j) = tmp;
         }
     }
+}
+
+void writeBytes(IOutputStream& output, size_t size, void* from) {
+    for (size_t j = 0; j < size; ++j) {
+        output.Write(static_cast<byte*>(from)[j]);
+    }
+}
+
+void readTreeHeader(vector<byte>& items, vector<uint32_t>& freqs, IInputStream& input) {
+    uint32_t size, freq;
+    readBytes(input, sizeof(size), static_cast<void*>(&size));
+    byte tmp;
     for (size_t i = 0; i < size; ++i) {
         input.Read(tmp);
         items.push_back(tmp);
-        for (size_t j = 0; j < 4; ++j) {
-            if (input.Read(tmp)) {
-                *(static_cast<byte*>(static_cast<void*>(&freq)) + j) = tmp;
-            }
-        }
+        readBytes(input, sizeof(freq), static_cast<void*>(&freq));
         freqs.push_back(freq);
     }
 }
 
 void buildTreeMapping(map<byte, std::string>& mapper, TNode* node, std::string prefix) {
     if (node->left == nullptr && node->right == nullptr) {
-        // leaf
         mapper[node->data] = prefix;
     } else {
         buildTreeMapping(mapper, node->left, prefix + 'l');
@@ -140,7 +146,6 @@ void buildTreeMapping(map<byte, std::string>& mapper, TNode* node, std::string p
 
 void buildTreeReverseMapping(map<std::string, byte>& mapper, TNode* node, std::string prefix) {
     if (node->left == nullptr && node->right == nullptr) {
-        // leaf
         mapper[prefix] = node->data;
     } else {
         buildTreeReverseMapping(mapper, node->left, prefix + 'l');
@@ -156,6 +161,16 @@ void printDataCompressed(const vector<byte>& input, TNode* tree, BitsWriter& wri
     }
 }
 
+TNode* treeFromAlphabet(vector<byte>& items, vector<uint32_t>& freqs, const vector<uint32_t>& alphabet) {
+    for (uint32_t i = 0; i <= 255; ++i) {
+        if (alphabet[i] > 0) {
+            items.push_back(static_cast<byte>(i));
+            freqs.push_back(alphabet[i]);
+        }
+    }
+    return Huffman(items, freqs);
+}
+
 void Encode(IInputStream& original, IOutputStream& compressed) {
     byte tmp;
     vector<byte> input;
@@ -164,23 +179,14 @@ void Encode(IInputStream& original, IOutputStream& compressed) {
         alphabet[tmp]++;
         input.push_back(tmp);
     }
-    // build tree
+    // write tree
     vector<byte> items;
     vector<uint32_t> freqs;
-    for (uint32_t i = 0; i <= 255; ++i) {
-        if (alphabet[i] > 0) {
-            items.push_back(static_cast<byte>(i));
-            freqs.push_back(alphabet[i]);
-        }
-    }
-    auto* tree = Huffman(items, freqs);
-    // write tree
+    auto* tree = treeFromAlphabet(items, freqs, alphabet);
     writeTreeHeader(items, freqs, compressed);
     // write data
     auto size = static_cast<uint32_t>(input.size());
-    for (size_t j = 0; j < 4; ++j) {
-        compressed.Write(static_cast<byte*>(static_cast<void*>(&size))[j]);
-    }
+    writeBytes(compressed, sizeof(size), static_cast<void*>(&size));
     BitsWriter writer;
     printDataCompressed(input, tree, writer);
     auto res = writer.GetResult();
@@ -189,35 +195,35 @@ void Encode(IInputStream& original, IOutputStream& compressed) {
     }
 }
 
-void Decode(IInputStream& compressed, IOutputStream& original) {
+inline TNode* constructTree(IInputStream& input) {
     vector<byte> items;
     vector<uint32_t> freqs;
-    readTreeHeader(items, freqs, compressed);
-    // build tree
+    readTreeHeader(items, freqs, input);
     auto* huffTree = Huffman(items, freqs);
-    // read header
+    return huffTree;
+}
+
+void Decode(IInputStream& compressed, IOutputStream& original) {
+    auto* huffTree = constructTree(compressed);
     map<std::string, byte> mapper;
     buildTreeReverseMapping(mapper, huffTree, "");
+
     uint32_t size;
-    byte tmp;
-    for (size_t j = 0; j < 4; ++j) {
-        if (compressed.Read(tmp)) {
-            *(static_cast<byte*>(static_cast<void*>(&size)) + j) = tmp;
-        }
-    }
-    // read data
+    readBytes(compressed, sizeof(size), static_cast<void*>(&size));
+
     std::string buff;
+    byte tmp;
     uint32_t written = 0;
     while (compressed.Read(tmp) && written != size) {
-        for (int16_t i = 0; i < 8; ++i) {
+        for (int8_t i = 0; i < 8; ++i) {
             buff += (tmp & (0x1 << i)) ? 'r' : 'l';
             if (mapper.find(buff) != mapper.end()) {
                 original.Write(mapper[buff]);
                 written++;
                 buff = "";
-            }
-            if (written == size) {
-                break;
+                if (written == size) {
+                    break;
+                }
             }
         }
     }
@@ -256,11 +262,13 @@ public:
 };
 
 int main() {
-    TReader reader("abbbbbccdeeeeeeeeeeefqq");
+    std::string inp("abbbbbccdeeeeeeeeeeefqq");
+    TReader reader(inp);
     TWriter writer1, writer2;
     Encode(reader, writer1);
     TReader reader2(writer1.GetResult());
-    std::cout << "WTF " << std::string(writer1.GetResult().begin(), writer1.GetResult().end()) << std::endl;
+    std::cout << std::string(writer1.GetResult().begin(), writer1.GetResult().end()) << std::endl;
     Decode(reader2, writer2);
-    std::cout << std::string(writer2.GetResult().begin(), writer2.GetResult().end()) << std::endl;
+    std::string out(writer2.GetResult().begin(), writer2.GetResult().end());
+    std::cout << out << (out == inp ? " - SAME" : " - SOMETHING WRONG") << std::endl;
 }
