@@ -3,5 +3,4 @@ project(hw)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(hw 4_1.cpp)
-add_executable(hw 3_2.cpp)
+add_executable(hw81 hw5/task8_1.cpp)
