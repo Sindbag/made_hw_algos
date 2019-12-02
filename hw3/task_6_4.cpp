@@ -61,7 +61,7 @@ namespace {
 
     template<typename T>
     void TTree<T>::cut() {
-        traversalCb(free);
+        traversalCb([&](TTree::TNode* el) { delete el; });
     }
 
     template<typename T>
