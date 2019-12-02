@@ -58,7 +58,8 @@ namespace {
                 root = splay(root->left, key);
                 root->setRight(temp->right);
             }
-            free(temp);
+            
+            delete temp;
         }
 
         [[nodiscard]]
