@@ -147,20 +147,22 @@ int main() {
     THashTable table(8, hashFunction);
     char command = ' ';
     std::string value;
+    bool res = false;
     while (std::cin >> command >> value) {
         switch (command) {
             case '?':
-                std::cout << (table.Has(value) ? "OK" : "FAIL") << std::endl;
+                res = table.Has(value);
                 break;
             case '+':
-                std::cout << (table.Add(value) ? "OK" : "FAIL") << std::endl;
+                res = table.Add(value);
                 break;
             case '-':
-                std::cout << (table.Remove(value) ? "OK" : "FAIL") << std::endl;
+                res = table.Remove(value);
                 break;
             default:
                 break;
         }
+        std::cout << (res ? "OK" : "FAIL") << std::endl;
     }
     return 0;
 }
