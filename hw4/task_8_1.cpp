@@ -6,6 +6,7 @@
 namespace {
     const uint64_t M = 1ull << 52ull;
     const uint64_t A = 7000111357;
+    const double RESIZE_TH = 0.75;
 
     uint64_t hashFunction(const std::string& input, const uint64_t& m) {
         uint64_t hash = 0;
@@ -45,10 +46,10 @@ namespace {
             {}
         };
 
-        std::vector<THashTableNode*> table;
+        std::vector<THashTableNode> table;
         THashFunctor op;
         uint64_t keyCount = 0;
-        float th = 0.75;
+        float th = RESIZE_TH;
 
         [[nodiscard]]
         inline uint64_t probe(const size_t& i, const uint64_t& prev, const size_t& size) const {
@@ -58,11 +59,11 @@ namespace {
         [[nodiscard]]
         std::pair<bool, uint64_t> searchPresent(const std::string& key,
                                                 const uint64_t& hash,
-                                                const std::vector<THashTableNode*>& tab) const {
+                                                const std::vector<THashTableNode>& tab) const {
             auto pos = hash % tab.size();
-            for (size_t i = 0; tab[pos] != nullptr; pos = probe(++i, pos, tab.size())) {
-                if (tab[pos]->key == key) {
-                    if (tab[pos]->deleted) {
+            for (size_t i = 0; !tab[pos].key.empty(); pos = probe(++i, pos, tab.size())) {
+                if (tab[pos].key == key) {
+                    if (tab[pos].deleted) {
                         return {false, pos}; // found, but deleted, return empty slot
                     }
                     return {true, pos}; // found, return position
@@ -70,20 +71,30 @@ namespace {
             }
             return {false, pos}; // not found, return empty position
         }
+
+        [[nodiscard]]
+        auto resizeFactor() const {
+            return keyCount * (1.0 / table.size()) >= th;
+        }
+
+        void checkSize() {
+            if (!resizeFactor()) return;
+
+            std::vector<THashTableNode> newTab(table.size() * 2);
+            for (size_t i = 0; i < table.size(); ++i) {
+                if (!table[i].key.empty() && !table[i].deleted) {
+                    newTab[searchPresent(table[i].key, table[i].hash, newTab).second] = table[i];
+                }
+            }
+            table = newTab;
+        }
     };
 
     template<typename THashFunctor>
     THashTable<THashFunctor>::THashTable(size_t initial_size, THashFunctor hashop)
-        : table(initial_size, nullptr)
+        : table(initial_size)
         , op(hashop)
     {}
-
-    template<typename THashFunctor>
-    THashTable<THashFunctor>::~THashTable() {
-        for (THashTableNode* node : table) {
-            delete node;
-        }
-    }
 
     template<typename THashFunctor>
     bool THashTable<THashFunctor>::Has(const std::string& key) const {
@@ -104,26 +115,9 @@ namespace {
             return false;
         }
 
-        if (table[res.second]) {
-            table[res.second]->key = key;
-            table[res.second]->hash = hash;
-            table[res.second]->deleted = false;
-        } else {
-            auto* newNode = new THashTableNode(key, hash);
-            table[res.second] = newNode;
-            keyCount += 1;
-        }
-
-        // time to grow
-        if (keyCount * (1.0 / table.size()) >= th) {
-            std::vector<THashTableNode*> newTab(table.size() * 2);
-            for (size_t i = 0; i < table.size(); ++i) {
-                if (table[i] && !table[i]->deleted) {
-                    newTab[searchPresent(table[i]->key, table[i]->hash, newTab).second] = table[i];
-                }
-            }
-            table = newTab;
-        }
+        if (table[res.second].key.empty()) keyCount += 1;
+        table[res.second] = THashTableNode(key, hash);
+        checkSize();
 
         return true;
     }
@@ -138,7 +132,7 @@ namespace {
             return false;
         }
 
-        table[res.second]->deleted = true;
+        table[res.second].deleted = true;
         return true;
     }
 }
