@@ -8,6 +8,7 @@
 #include <utility>
 #include <cmath>
 #include <cassert>
+#include <climits>
 
 namespace {
     using std::priority_queue;
@@ -64,12 +65,13 @@ namespace {
     }
 
     class THuffmanTree {
-    private:
+    public:
         static constexpr char LEFT_CHILD = 'l';
         static constexpr char RIGHT_CHILD = 'r';
         static constexpr char UP_MOVE = 'u';
         static constexpr char DOWN_MOVE = 'd';
         static constexpr char INTERNAL_NODE = '$';
+    private:
 
         class TNode {
         public:
@@ -202,7 +204,7 @@ namespace {
         }
 
         auto res = writer.GetResult();
-        assert(res.size() == uint16_t(ceil(psize * 1. / std::numeric_limits<char>::digits)));
+        assert(res.size() == uint16_t(ceil(psize * 1. / CHAR_BIT)));
         for (unsigned char re : res) {
             output.Write(re);
         }
@@ -221,7 +223,7 @@ namespace {
     }
 
     vector<uint32_t> THuffmanTree::getAlphabet(const vector<byte>& data) {
-        vector<uint32_t> alphabet(std::numeric_limits<char>::max());
+        vector<uint32_t> alphabet(1 << CHAR_BIT);
         for (auto el: data) {
             alphabet[el]++;
         }
@@ -265,10 +267,10 @@ namespace {
         std::string path{DOWN_MOVE};
         uint16_t psize;
         readBytes(input, sizeof(psize), static_cast<void*>(&psize));
-        const auto steps = static_cast<uint16_t>(ceil(psize * 1. / std::numeric_limits<char>::digits));
+        const auto steps = static_cast<uint16_t>(ceil(psize * 1. / CHAR_BIT));
         for (uint16_t i = 0; i < steps; i++) {
             input.Read(tmp);
-            for (uint8_t j = 0; (j < std::numeric_limits<char>::digits) && psize--; j++) {
+            for (uint8_t j = 0; (j < CHAR_BIT) && psize--; j++) {
                 path += (tmp & 0x1 << j) ? DOWN_MOVE : UP_MOVE;
             }
         }
@@ -394,14 +396,14 @@ namespace {
         void decompress(IInputStream& input, IOutputStream& output, uint32_t size) {
             map<std::string, byte> mapper = tree->getReverseMappings();
             std::string buff;
-            byte tmp, step = 8;
+            byte tmp, step = CHAR_BIT;
             while (size) {
-                if (step == 8) {
+                if (step == CHAR_BIT) {
                     if (!input.Read(tmp)) break;
                     step = 0;
                 }
 
-                buff += (tmp & (0x1 << step++)) ? 'r' : 'l';
+                buff += (tmp & (0x1 << step++)) ? THuffmanTree::RIGHT_CHILD : THuffmanTree::LEFT_CHILD;
                 if (mapper.find(buff) == mapper.end()) {
                     continue;
                 }
