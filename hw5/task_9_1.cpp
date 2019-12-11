@@ -65,7 +65,14 @@ namespace {
 
     class THuffmanTree {
     private:
-        struct TNode {
+        static constexpr char LEFT_CHILD = 'l';
+        static constexpr char RIGHT_CHILD = 'r';
+        static constexpr char UP_MOVE = 'u';
+        static constexpr char DOWN_MOVE = 'd';
+        static constexpr char INTERNAL_NODE = '$';
+
+        class TNode {
+        public:
             uint8_t data;
             uint32_t freq;
             TNode* left = nullptr;
@@ -73,23 +80,12 @@ namespace {
 
             TNode(uint8_t data_, uint32_t freq_) : data(data_), freq(freq_) {}
 
-            void buildMapping(map<byte, std::string>& mapper, const std::string& prefix) const {
-                if (left == nullptr && right == nullptr) {
-                    mapper[data] = prefix;
-                } else {
-                    if (left != nullptr) left->buildMapping(mapper, prefix + 'l');
-                    if (right != nullptr) right->buildMapping(mapper, prefix + 'r');
-                }
-            }
+            void buildMapping(map<byte, std::string>& mapper, const std::string& prefix) const;
+            void buildReverseMapping(map<std::string, byte>& mapper, const std::string& prefix) const;
 
-            void buildReverseMapping(map<std::string, byte>& mapper, const std::string& prefix) const {
-                if (left == nullptr && right == nullptr) {
-                    mapper[prefix] = data;
-                } else {
-                    if (left != nullptr) left->buildReverseMapping(mapper, prefix + 'l');
-                    if (right != nullptr) right->buildReverseMapping(mapper, prefix + 'r');
-                }
-            }
+        private:
+            template<typename T, typename Func>
+            void traverseMapping(T& mapper, const std::string& prefix, Func functor) const;
         };
 
         struct compare {
@@ -110,11 +106,11 @@ namespace {
             constructTree();
         }
 
-        THuffmanTree(IInputStream& input) {
+        explicit THuffmanTree(IInputStream& input) {
             deserialize(input);
         }
 
-        THuffmanTree(const vector<uint32_t>& alphabet) {
+        explicit THuffmanTree(const vector<uint32_t>& alphabet) {
             for (uint32_t i = 0; i <= 255; ++i) {
                 if (alphabet[i] > 0) {
                     items.push_back(static_cast<byte>(i));
@@ -124,7 +120,7 @@ namespace {
             constructTree();
         }
 
-        THuffmanTree(const vector<byte>& data) : THuffmanTree(getAlphabet(data)) {}
+        explicit THuffmanTree(const vector<byte>& data) : THuffmanTree(getAlphabet(data)) {}
 
         ~THuffmanTree() {
             queue<TNode*> nodes;
@@ -139,176 +135,205 @@ namespace {
             }
         }
 
-        size_t getSize() const {
-            size_t sum = 0;
-            for (const auto& el: freqs) {
-                sum += el;
-            }
-            return sum;
-        }
-
-        std::string getSerialString(vector<byte>& its) const {
-            assert(root != nullptr);
-
-            std::string path;
-            map<TNode*, bool> visits;
-            std::vector<TNode*> currStack;
-            currStack.push_back(root);
-            while (!currStack.empty()) {
-                if (!currStack.back()->left && !currStack.back()->right) {
-                    its.push_back(currStack.back()->data);
-                }
-                if (currStack.back()->left && !visits[currStack.back()->left]) {
-                    path += 'd';
-                    currStack.push_back(currStack.back()->left);
-                    continue;
-                }
-                if (currStack.back()->right && !visits[currStack.back()->right]) {
-                    path += 'd';
-                    currStack.push_back(currStack.back()->right);
-                    continue;
-                }
-                visits[currStack.back()] = true;
-                currStack.pop_back();
-                path += 'u';
-            }
-            std::string tmpPath;
-            for (size_t i = 1; i < path.size(); ++i) {
-                if (path[i] == 'd') {
-                    tmpPath += path[i - 1] == 'u' ? 'u' : 'd';
-                }
-            }
-            return tmpPath;
-        }
-
-        void serialize(IOutputStream& output) {
-            vector<byte> its;
-            std::string path = getSerialString(its);
-            assert(its.size() == items.size());
-
-            uint8_t size = its.size();
-            writeBytes(output, sizeof(size), static_cast<void*>(&size));
-            for (size_t i = 0; i < size; ++i) {
-                output.Write(its[i]);
-            }
-
-            uint16_t psize = path.size();
-            writeBytes(output, sizeof(psize), static_cast<void*>(&psize));
-            BitsWriter writer;
-            for (const char& p : path) {
-                writer.WriteBit(p == 'd');
-            }
-
-            auto res = writer.GetResult();
-            assert(res.size() == uint16_t(ceil(psize * 1. / 8)));
-            for (unsigned char re : res) {
-                output.Write(re);
-            }
-        }
-
+        std::string getSerialString(vector<byte>& its) const;
+        void serialize(IOutputStream& output);
         [[nodiscard]]
-        map<byte, std::string> getMappings() const {
-            map<byte, std::string> mapper;
-            if (root != nullptr) root->buildMapping(mapper, "");
-            return mapper;
-        }
-
+        map<byte, std::string> getMappings() const;
         [[nodiscard]]
-        map<std::string, byte> getReverseMappings() const {
-            map<std::string, byte> mapper;
-            if (root != nullptr) root->buildReverseMapping(mapper, "");
-            return mapper;
-        }
+        map<std::string, byte> getReverseMappings() const;
 
     private:
-        static vector<uint32_t> getAlphabet(const vector<byte>& data) {
-            vector<uint32_t> alphabet(256);
-            for (auto el: data) {
-                alphabet[el]++;
+        static vector<uint32_t> getAlphabet(const vector<byte>& data);
+        void constructTree();
+        void deserialize(IInputStream& input);
+        void constructFromString(const std::string& path);
+    };
+
+    std::string THuffmanTree::getSerialString(vector<byte>& its) const {
+        assert(root != nullptr);
+
+        std::string path;
+        map<TNode*, bool> visits;
+        std::vector<TNode*> currStack;
+        currStack.push_back(root);
+        while (!currStack.empty()) {
+            if (!currStack.back()->left && !currStack.back()->right) {
+                its.push_back(currStack.back()->data);
             }
-            return alphabet;
+            if (currStack.back()->left && !visits[currStack.back()->left]) {
+                path += DOWN_MOVE;
+                currStack.push_back(currStack.back()->left);
+                continue;
+            }
+            if (currStack.back()->right && !visits[currStack.back()->right]) {
+                path += DOWN_MOVE;
+                currStack.push_back(currStack.back()->right);
+                continue;
+            }
+            visits[currStack.back()] = true;
+            currStack.pop_back();
+            path += UP_MOVE;
+        }
+        std::string tmpPath;
+        for (size_t i = 1; i < path.size(); ++i) {
+            if (path[i] == DOWN_MOVE) {
+                tmpPath += path[i - 1] == UP_MOVE ? UP_MOVE : DOWN_MOVE;
+            }
+        }
+        return tmpPath;
+    }
+
+    void THuffmanTree::serialize(IOutputStream& output) {
+        vector<byte> its;
+        std::string path = getSerialString(its);
+        assert(its.size() == items.size());
+
+        uint8_t size = its.size();
+        writeBytes(output, sizeof(size), static_cast<void*>(&size));
+        for (size_t i = 0; i < size; ++i) {
+            output.Write(its[i]);
         }
 
-        void constructTree() {
-            TNode* left, * right, * top;
-
-            priority_queue<TNode*, vector<TNode*>, compare> minQueue;
-            for (size_t i = 0; i < items.size(); ++i) {
-                minQueue.push(new TNode(items[i], freqs[i]));
-            }
-
-            while (minQueue.size() != 1) {
-                left = minQueue.top();
-                minQueue.pop();
-                right = minQueue.top();
-                minQueue.pop();
-
-                top = new TNode('$', left->freq + right->freq);
-                top->left = left;
-                top->right = right;
-
-                minQueue.push(top);
-            }
-
-            root = minQueue.top();
+        uint16_t psize = path.size();
+        writeBytes(output, sizeof(psize), static_cast<void*>(&psize));
+        BitsWriter writer;
+        for (const char& p : path) {
+            writer.WriteBit(p == DOWN_MOVE);
         }
 
-        void deserialize(IInputStream& input) {
-            uint8_t size;
+        auto res = writer.GetResult();
+        assert(res.size() == uint16_t(ceil(psize * 1. / std::numeric_limits<char>::digits)));
+        for (unsigned char re : res) {
+            output.Write(re);
+        }
+    }
 
-            byte tmp;
-            readBytes(input, sizeof(size), static_cast<void*>(&size));
-            for (size_t i = 0; i < size; ++i) {
-                input.Read(tmp);
-                items.push_back(tmp);
-            }
+    map<byte, std::string> THuffmanTree::getMappings() const {
+        map<byte, std::string> mapper;
+        if (root != nullptr) root->buildMapping(mapper, "");
+        return mapper;
+    }
 
-            std::string path = "d";
-            uint16_t psize;
-            readBytes(input, sizeof(psize), static_cast<void*>(&psize));
-            const auto steps = static_cast<uint16_t>(ceil(psize * 1. / 8));
-            for (uint16_t i = 0; i < steps; i++) {
-                input.Read(tmp);
-                for (uint8_t j = 0; (j < 8) && psize--; j++) {
-                    path += (tmp & 0x1 << j) ? 'd' : 'u';
-                }
-            }
-            path += "u";
+    map<std::string, byte> THuffmanTree::getReverseMappings() const {
+        map<std::string, byte> mapper;
+        if (root != nullptr) root->buildReverseMapping(mapper, "");
+        return mapper;
+    }
 
-            root = new TNode('$', 0);
-            constructFromString(path);
+    vector<uint32_t> THuffmanTree::getAlphabet(const vector<byte>& data) {
+        vector<uint32_t> alphabet(std::numeric_limits<char>::max());
+        for (auto el: data) {
+            alphabet[el]++;
+        }
+        return alphabet;
+    }
+
+    void THuffmanTree::constructTree() {
+        TNode* left, * right, * top;
+
+        priority_queue<TNode*, vector<TNode*>, compare> minQueue;
+        for (size_t i = 0; i < items.size(); ++i) {
+            minQueue.push(new TNode(items[i], freqs[i]));
         }
 
-        void constructFromString(const std::string& path) {
-            vector<TNode*> currStack = { root };
-            TNode* curr = currStack.back();
-            size_t q = 0;
-            for (const char& pos : path) {
-                if (pos == 'u') {
-                    curr->data = items[q++];
+        while (minQueue.size() != 1) {
+            left = minQueue.top();
+            minQueue.pop();
+            right = minQueue.top();
+            minQueue.pop();
 
-                    while (curr != root) {
-                        currStack.pop_back();
-                        curr = currStack.back();
-                        if (curr && !curr->right) {
-                            break;
-                        }
-                    }
+            top = new TNode(INTERNAL_NODE, left->freq + right->freq);
+            top->left = left;
+            top->right = right;
 
+            minQueue.push(top);
+        }
+
+        root = minQueue.top();
+    }
+
+    void THuffmanTree::deserialize(IInputStream& input) {
+        uint8_t size;
+
+        byte tmp;
+        readBytes(input, sizeof(size), static_cast<void*>(&size));
+        for (size_t i = 0; i < size; ++i) {
+            input.Read(tmp);
+            items.push_back(tmp);
+        }
+
+        std::string path{DOWN_MOVE};
+        uint16_t psize;
+        readBytes(input, sizeof(psize), static_cast<void*>(&psize));
+        const auto steps = static_cast<uint16_t>(ceil(psize * 1. / std::numeric_limits<char>::digits));
+        for (uint16_t i = 0; i < steps; i++) {
+            input.Read(tmp);
+            for (uint8_t j = 0; (j < std::numeric_limits<char>::digits) && psize--; j++) {
+                path += (tmp & 0x1 << j) ? DOWN_MOVE : UP_MOVE;
+            }
+        }
+        path += UP_MOVE;
+
+        root = new TNode(INTERNAL_NODE, 0);
+        constructFromString(path);
+    }
+
+    void THuffmanTree::constructFromString(const std::string& path) {
+        vector<TNode*> currStack = { root };
+        TNode* curr = currStack.back();
+        size_t q = 0;
+        for (const char& pos : path) {
+            if (pos == UP_MOVE) {
+                curr->data = items[q++];
+
+                while (curr != root) {
+                    currStack.pop_back();
+                    curr = currStack.back();
                     if (curr && !curr->right) {
-                        curr->right = new TNode('$', 0);
-                        curr = curr->right;
-                        currStack.push_back(curr);
+                        break;
                     }
                 }
-                if (pos == 'd') {
-                    curr->left = new TNode('$', 0);
-                    curr = curr->left;
+
+                if (curr && !curr->right) {
+                    curr->right = new TNode(INTERNAL_NODE, 0);
+                    curr = curr->right;
                     currStack.push_back(curr);
                 }
             }
+            if (pos == DOWN_MOVE) {
+                curr->left = new TNode(INTERNAL_NODE, 0);
+                curr = curr->left;
+                currStack.push_back(curr);
+            }
         }
-    };
+    }
+
+
+    template<typename T, typename Func>
+    void THuffmanTree::TNode::traverseMapping(T& mapper, const std::string& prefix, Func functor) const {
+        if (left == nullptr && right == nullptr) {
+            functor(mapper, data, prefix);
+        } else {
+            if (left != nullptr) left->traverseMapping<T>(mapper, prefix + LEFT_CHILD, functor);
+            if (right != nullptr) right->traverseMapping<T>(mapper, prefix + RIGHT_CHILD, functor);
+        }
+    }
+
+    void THuffmanTree::TNode::buildMapping(map<byte, std::string>& mapper, const std::string& prefix) const {
+        traverseMapping<map<byte, std::string>>(
+                mapper,
+                prefix,
+                [](map<byte, std::string>& rel, uint8_t dat, const std::string& pref) { rel[dat] = pref; }
+        );
+    }
+
+    void THuffmanTree::TNode::buildReverseMapping(map<std::string, byte>& mapper, const std::string& prefix) const {
+        traverseMapping<map<std::string, byte>>(
+                mapper,
+                prefix,
+                [](map<std::string, byte>& rel, uint8_t dat, const std::string& pref) { rel[pref] = dat; }
+        );
+    }
 
     class TEncoder {
     private:
@@ -331,6 +356,8 @@ namespace {
             for (const auto& chunk : compressedData) {
                 output.Write(chunk);
             }
+
+            delete tree;
         }
 
     private:
@@ -359,6 +386,8 @@ namespace {
             uint32_t size;
             readBytes(input, sizeof(size), static_cast<void*>(&size));
             decompress(input, output, size);
+
+            delete tree;
         }
 
     private:
@@ -428,7 +457,7 @@ void Decode(IInputStream& compressed, IOutputStream& original) {
 }
 
 int main() {
-    std::string inp("missisipimissisipiasadpajsdpjadjpas - SOMETHING WRONG - SOMETHING WRONG");
+    std::string inp("missisipimissisipiasadpajsdpjadjpas - TRY TO MAKE THE STRING LONGER -");
 
     TReader reader(inp);
     TWriter writer1;
